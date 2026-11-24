@@ -30,14 +30,32 @@ npm run build
 ### Option B — Package and Install Permanently (`.vsix`)
 ```bash
 npx @vscode/vsce package
-code --install-extension codewalk-0.1.0.vsix
+code --install-extension codewalk-0.2.0.vsix
 ```
 
-On startup, the extension starts a localhost-only HTTP bridge at `http://127.0.0.1:47321` (configurable via `codewalk.port`). You can check its status at any time with **`CodeWalk: Show MCP Bridge Status`**.
+On startup, the extension starts a localhost-only MCP & HTTP bridge at `http://127.0.0.1:47321` (configurable via `codewalk.port`), exposing the Streamable HTTP MCP endpoint at **`http://127.0.0.1:47321/mcp`**. You can check its status at any time with **`CodeWalk: Show MCP Bridge Status`**.
 
-## 2. Connect the MCP Server
+## 2. Connect Your MCP Client
 
 Add `codewalk` to your MCP client configuration (for Antigravity: `~/.gemini/config/mcp_config.json`):
+
+### Recommended — Streamable HTTP (no repo clone required)
+
+Because the MCP server runs directly inside the VS Code extension, any MCP client that supports Streamable HTTP (Antigravity, Cursor, Claude Code, VS Code, etc.) only needs the local URL:
+
+```json
+{
+  "mcpServers": {
+    "codewalk": {
+      "url": "http://127.0.0.1:47321/mcp"
+    }
+  }
+}
+```
+
+### Fallback — Stdio (for stdio-only clients)
+
+If your MCP client only supports `stdio`, you can point it at the bundled `dist/mcpServer.js` bridge:
 
 ```json
 {

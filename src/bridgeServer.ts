@@ -1,5 +1,7 @@
 import * as http from 'http';
 import * as vscode from 'vscode';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { CodeWalkBackend, createCodeWalkMcpServer } from './mcpCore';
 import { TourManager } from './tourManager';
 import {
   AddStepsPayload,
@@ -130,28 +132,13 @@ export class BridgeServer implements vscode.Disposable {
     const pathname = url.pathname;
     const method = (req.method ?? 'GET').toUpperCase();
 
+    if (pathname === '/mcp') {
+      await this.handleMcpRequest(req, res);
+      return;
+    }
+
     if (method === 'GET' && pathname === '/health') {
-      const tour = this.tourManager.getTour();
-      const workspaceFolders = (vscode.workspace.workspaceFolders ?? []).map(
-        (f) => f.uri.fsPath
-      );
-      const body: BridgeHealthResponse = {
-        ok: true,
-        version: '0.1.0',
-        port: this.port,
-        listening: this.isListening(),
-        workspaceFolders,
-        activeTour: tour
-          ? {
-              id: tour.id,
-              title: tour.title,
-              stepCount: tour.steps.length,
-              currentStepIndex: tour.currentStepIndex,
-              pendingQuestions: tour.questions.filter((q) => !q.answer).length,
-            }
-          : null,
-      };
-      this.sendJson(res, 200, body);
+      this.sendJson(res, 200, this.getHealth());
       return;
     }
 
@@ -228,6 +215,71 @@ export class BridgeServer implements vscode.Disposable {
       ok: false,
       error: `Route not found: ${method} ${pathname}`,
     });
+  }
+
+  private getHealth(): BridgeHealthResponse {
+    const tour = this.tourManager.getTour();
+    const workspaceFolders = (vscode.workspace.workspaceFolders ?? []).map(
+      (f) => f.uri.fsPath
+    );
+    return {
+      ok: true,
+      version: '0.2.0',
+      port: this.port,
+      listening: this.isListening(),
+      workspaceFolders,
+      activeTour: tour
+        ? {
+            id: tour.id,
+            title: tour.title,
+            stepCount: tour.steps.length,
+            currentStepIndex: tour.currentStepIndex,
+            pendingQuestions: tour.questions.filter((q) => !q.answer).length,
+          }
+        : null,
+    };
+  }
+
+  private createMcpBackend(): CodeWalkBackend {
+    return {
+      getHealth: async () => this.getHealth(),
+      createTour: (payload) => this.tourManager.createTour(payload),
+      addSteps: (payload) => this.tourManager.addSteps(payload),
+      focusStep: (payload) => this.tourManager.focusStep(payload),
+      highlightCode: (payload) => this.tourManager.highlightCode(payload),
+      getQuestions: async (includeAnswered) =>
+        this.tourManager.getQuestions(includeAnswered),
+      reply: (payload) => this.tourManager.replyToStep(payload),
+      clearTour: () => this.tourManager.clearTour(),
+    };
+  }
+
+  private async handleMcpRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse
+  ): Promise<void> {
+    const method = (req.method ?? 'GET').toUpperCase();
+    if (method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+    });
+    const mcpServer = createCodeWalkMcpServer(
+      this.createMcpBackend(),
+      this.port
+    );
+
+    res.on('close', () => {
+      void transport.close();
+      void mcpServer.close();
+    });
+
+    await mcpServer.connect(transport);
+    await transport.handleRequest(req, res);
   }
 
   private handleNextEvent(
