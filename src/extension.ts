@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { BridgeServer } from './bridgeServer';
 import { CommentViewManager } from './commentView';
+import { i18n, LanguagePreference } from './i18n';
 import { SpotlightManager } from './spotlight';
 import { TourManager } from './tourManager';
 import { TourTreeDataProvider } from './treeView';
@@ -13,7 +14,10 @@ export async function activate(
   const config = vscode.workspace.getConfiguration('codewalk');
   const initialDim = config.get<boolean>('dimInactiveCode', true);
   const initialLineNotes = config.get<boolean>('showLineNotes', true);
+  const initialLang = config.get<LanguagePreference>('language', 'auto');
   const port = config.get<number>('port', 47321);
+
+  i18n.setPreference(initialLang);
 
   const spotlight = new SpotlightManager(initialDim, initialLineNotes);
   const comments = new CommentViewManager();
@@ -29,10 +33,17 @@ export async function activate(
     vscode.StatusBarAlignment.Left,
     99
   );
-  listenerStatusBarItem.text = '$(radio-tower) CodeWalk: Escuchando';
-  listenerStatusBarItem.tooltip =
-    'Antigravity está escuchando tus preguntas y peticiones de tour. Clic para detener.';
   listenerStatusBarItem.command = 'codewalk.stopListening';
+
+  const syncListenerStatusBar = (): void => {
+    listenerStatusBarItem.text = i18n.messages.listeningStatusBar;
+    listenerStatusBarItem.tooltip = i18n.messages.listeningTooltip;
+  };
+  syncListenerStatusBar();
+
+  const unsubscribeLocale = i18n.onDidChangeLocale(() => {
+    syncListenerStatusBar();
+  });
 
   const updateListeningUI = (listening: boolean): void => {
     treeProvider.setListening(listening);
@@ -42,6 +53,7 @@ export async function activate(
       listening
     );
     if (listening) {
+      syncListenerStatusBar();
       listenerStatusBarItem.show();
     } else {
       listenerStatusBarItem.hide();
@@ -49,11 +61,14 @@ export async function activate(
   };
 
   bridgeServer = new BridgeServer(tourManager, port, updateListeningUI);
-  tourManager.setEventDispatcher((event) => bridgeServer?.emitEvent(event) ?? false);
+  tourManager.setEventDispatcher(
+    (event) => bridgeServer?.emitEvent(event) ?? false
+  );
   await bridgeServer.start();
   updateListeningUI(false);
 
   context.subscriptions.push(
+    { dispose: unsubscribeLocale },
     tourManager,
     treeView,
     bridgeServer,
@@ -73,9 +88,7 @@ export async function activate(
         }
         const tour = tourManager.getTour();
         if (!tour) {
-          vscode.window.showInformationMessage(
-            'CodeWalk: No hay ningún recorrido activo.'
-          );
+          vscode.window.showInformationMessage(i18n.messages.noActiveTour);
           return;
         }
         const picked = await vscode.window.showQuickPick(
@@ -84,7 +97,7 @@ export async function activate(
             description: `${s.file}:${s.startLine}-${s.endLine}`,
             index: i,
           })),
-          { placeHolder: 'Selecciona un paso del recorrido' }
+          { placeHolder: i18n.messages.selectStepPlaceholder }
         );
         if (picked) {
           await tourManager.focusStep({ index: picked.index });
@@ -93,15 +106,12 @@ export async function activate(
     ),
     vscode.commands.registerCommand('codewalk.toggleDim', () => {
       const enabled = spotlight.toggleDim();
-      vscode.window.setStatusBarMessage(
-        `CodeWalk: Atenuado ${enabled ? 'activado' : 'desactivado'}`,
-        2500
-      );
+      vscode.window.setStatusBarMessage(i18n.messages.dimStatus(enabled), 2500);
     }),
     vscode.commands.registerCommand('codewalk.toggleLineNotes', () => {
       const enabled = spotlight.toggleLineNotes();
       vscode.window.setStatusBarMessage(
-        `CodeWalk: Notas línea a línea ${enabled ? 'activadas' : 'desactivadas'}`,
+        i18n.messages.lineNotesStatus(enabled),
         2500
       );
     }),
@@ -123,35 +133,36 @@ export async function activate(
         const prompt = tourManager.buildPendingQuestionsPrompt();
         if (!prompt) {
           vscode.window.showInformationMessage(
-            'CodeWalk: No hay preguntas pendientes.'
+            i18n.messages.noPendingQuestions
           );
           return;
         }
         await vscode.env.clipboard.writeText(prompt);
-        vscode.window.showInformationMessage(
-          'CodeWalk: Prompt de preguntas pendientes copiado al portapapeles.'
-        );
+        vscode.window.showInformationMessage(i18n.messages.pendingPromptCopied);
       }
     ),
     vscode.commands.registerCommand('codewalk.showBridgeStatus', () => {
       if (bridgeServer?.isRunning()) {
-        const mode = bridgeServer.isListening()
-          ? 'Escuchando activamente'
-          : 'Modo manual';
         vscode.window.showInformationMessage(
-          `CodeWalk MCP Bridge activo en http://127.0.0.1:${bridgeServer.getPort()} (${mode})`
+          i18n.messages.bridgeActive(
+            bridgeServer.getPort(),
+            bridgeServer.isListening()
+          )
         );
       } else {
         vscode.window.showWarningMessage(
-          `CodeWalk MCP Bridge no está escuchando en el puerto ${bridgeServer?.getPort() ?? port} (${bridgeServer?.getLastError() ?? 'desconocido'}).`
+          i18n.messages.bridgeInactive(
+            bridgeServer?.getPort() ?? port,
+            bridgeServer?.getLastError() ?? 'unknown'
+          )
         );
       }
     }),
     vscode.commands.registerCommand('codewalk.requestTour', async () => {
       const prompt = await vscode.window.showInputBox({
-        title: 'CodeWalk: Nuevo recorrido',
-        prompt: '¿Qué funcionalidad o parte del proyecto quieres que te explique?',
-        placeHolder: 'Ej: Cómo funciona el sistema de autenticación paso a paso',
+        title: i18n.messages.requestTourBoxTitle,
+        prompt: i18n.messages.requestTourBoxPrompt,
+        placeHolder: i18n.messages.requestTourBoxPlaceholder,
       });
       if (!prompt?.trim()) {
         return;
@@ -164,9 +175,7 @@ export async function activate(
     vscode.commands.registerCommand('codewalk.explainSelection', async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
-        vscode.window.showInformationMessage(
-          'CodeWalk: Abre un archivo primero para explicarlo.'
-        );
+        vscode.window.showInformationMessage(i18n.messages.openFileFirst);
         return;
       }
       const sel = editor.selection;
@@ -180,11 +189,11 @@ export async function activate(
         : undefined;
 
       const customPrompt = await vscode.window.showInputBox({
-        title: 'CodeWalk: Explicar código',
+        title: i18n.messages.explainBoxTitle,
         prompt: hasSelection
-          ? `¿Qué quieres entender de estas líneas (${startLine}-${endLine})? (Enter para explicación general)`
-          : '¿Qué quieres entender de este archivo? (Enter para explicación general)',
-        placeHolder: 'Opcional: enfócate en el manejo de errores, flujo de datos...',
+          ? i18n.messages.explainSelectionPrompt(startLine, endLine)
+          : i18n.messages.explainFilePrompt,
+        placeHolder: i18n.messages.explainPlaceholder,
       });
       if (customPrompt === undefined) {
         return;
@@ -193,8 +202,8 @@ export async function activate(
       const finalPrompt =
         customPrompt.trim() ||
         (hasSelection
-          ? `Explícame en detalle este bloque de código (líneas ${startLine}-${endLine}).`
-          : 'Explícame paso a paso cómo funciona este archivo.');
+          ? i18n.messages.explainSelectionDefault(startLine, endLine)
+          : i18n.messages.explainFileDefault);
 
       await tourManager.requestTour(finalPrompt, {
         file: editor.document.uri.fsPath,
@@ -206,13 +215,13 @@ export async function activate(
     vscode.commands.registerCommand('codewalk.stopListening', () => {
       if (!bridgeServer?.isListening()) {
         vscode.window.showInformationMessage(
-          'CodeWalk: Antigravity no estaba escuchando en este momento.'
+          i18n.messages.notListeningMessage
         );
         return;
       }
       bridgeServer.stopListening();
       vscode.window.showInformationMessage(
-        'CodeWalk: Modo escucha detenido.'
+        i18n.messages.listeningStoppedMessage
       );
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
@@ -227,6 +236,12 @@ export async function activate(
           .getConfiguration('codewalk')
           .get<boolean>('showLineNotes', true);
         spotlight.setLineNotesEnabled(show);
+      }
+      if (e.affectsConfiguration('codewalk.language')) {
+        const pref = vscode.workspace
+          .getConfiguration('codewalk')
+          .get<LanguagePreference>('language', 'auto');
+        i18n.setPreference(pref);
       }
     })
   );

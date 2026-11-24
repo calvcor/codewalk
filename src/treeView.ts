@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { i18n } from './i18n';
 import { Tour, TourStep } from './types';
 
 class TourTreeItem extends vscode.TreeItem {
@@ -42,21 +43,18 @@ export class TourTreeDataProvider
     }
 
     if (!this.tour) {
+      const m = i18n.messages;
       const empty = new TourTreeItem(
-        this.listening
-          ? 'Antigravity escuchando'
-          : 'Sin recorrido activo'
+        this.listening ? m.listeningTitle : m.noTourTitle
       );
-      empty.description = this.listening
-        ? 'Pulsa + para pedir un tour'
-        : 'Esperando a Antigravity por MCP';
+      empty.description = this.listening ? m.listeningDesc : m.noTourDesc;
       empty.iconPath = new vscode.ThemeIcon(
         this.listening ? 'radio-tower' : 'info',
         this.listening ? new vscode.ThemeColor('charts.green') : undefined
       );
       empty.command = {
         command: 'codewalk.requestTour',
-        title: 'Solicitar nuevo tour',
+        title: m.requestNewTourTitle,
       };
       return [empty];
     }
@@ -66,7 +64,7 @@ export class TourTreeDataProvider
 
     const header = new TourTreeItem(this.tour.title);
     header.description = `${this.tour.currentStepIndex + 1}/${this.tour.steps.length}${
-      pendingCount > 0 ? ` · ${pendingCount} duda${pendingCount > 1 ? 's' : ''}` : ''
+      pendingCount > 0 ? ` · ${i18n.messages.pendingCount(pendingCount)}` : ''
     }`;
     header.iconPath = new vscode.ThemeIcon(
       'book',

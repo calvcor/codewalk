@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { i18n } from './i18n';
 import { LineNote } from './types';
 
 const MAX_INLINE_NOTE_LENGTH = 90;
@@ -133,7 +134,7 @@ export class SpotlightManager implements vscode.Disposable {
             ? `${cleanText.slice(0, MAX_INLINE_NOTE_LENGTH - 1)}…`
             : cleanText;
 
-        const hoverParts = [`**Línea ${note.line}**: ${note.text}`];
+        const hoverParts = [i18n.messages.lineHover(note.line, note.text)];
         if (note.detail) {
           hoverParts.push(note.detail);
         }

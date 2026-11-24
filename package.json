@@ -51,6 +51,12 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically copy a ready-to-paste prompt to the clipboard when you ask a question inline."
+        },
+        "codewalk.language": {
+          "type": "string",
+          "enum": ["auto", "en", "es"],
+          "default": "auto",
+          "description": "UI language for CodeWalk. Defaults to English and automatically switches to Spanish when Spanish text is detected in questions or walkthroughs."
         }
       }
     },

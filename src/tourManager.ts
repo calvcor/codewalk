@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { CommentViewManager } from './commentView';
+import { i18n } from './i18n';
 import { SpotlightManager } from './spotlight';
 import { TourTreeDataProvider } from './treeView';
 import {
@@ -48,6 +49,31 @@ export class TourManager implements vscode.Disposable {
         this.spotlight.reapplyToVisibleEditors();
       })
     );
+
+    const unsubscribeLocale = i18n.onDidChangeLocale(() => {
+      this.onLocaleChanged();
+    });
+    this.disposables.push({ dispose: unsubscribeLocale });
+  }
+
+  private onLocaleChanged(): void {
+    this.comments.syncControllerOptions();
+    this.spotlight.reapplyToVisibleEditors();
+    if (this.tour) {
+      const step = this.tour.steps[this.tour.currentStepIndex];
+      if (step) {
+        const stepQuestions = this.tour.questions.filter(
+          (q) => q.stepId === step.id
+        );
+        this.comments.refreshStepComments(
+          step,
+          stepQuestions,
+          this.tour.currentStepIndex,
+          this.tour.steps.length
+        );
+      }
+    }
+    this.refreshUI();
   }
 
   public setEventDispatcher(
@@ -73,6 +99,10 @@ export class TourManager implements vscode.Disposable {
     if (!payload.steps || payload.steps.length === 0) {
       throw new Error('A tour must contain at least one step.');
     }
+
+    i18n.detectAndApply(
+      `${payload.title} ${payload.summary ?? ''} ${payload.steps[0].explanation}`
+    );
 
     const steps = payload.steps.map((s, idx) => this.normalizeStep(s, idx));
     const startIndex = Math.max(
@@ -176,7 +206,7 @@ export class TourManager implements vscode.Disposable {
       await this.focusStep({ index: this.tour.currentStepIndex + 1 });
     } else {
       vscode.window.showInformationMessage(
-        `CodeWalk: Has llegado al último paso de "${this.tour.title}".`
+        i18n.messages.lastStepMessage(this.tour.title)
       );
     }
   }
@@ -188,13 +218,12 @@ export class TourManager implements vscode.Disposable {
     if (this.tour.currentStepIndex > 0) {
       await this.focusStep({ index: this.tour.currentStepIndex - 1 });
     } else {
-      vscode.window.showInformationMessage(
-        'CodeWalk: Ya estás en el primer paso.'
-      );
+      vscode.window.showInformationMessage(i18n.messages.firstStepMessage);
     }
   }
 
   public async highlightCode(payload: HighlightCodePayload): Promise<void> {
+    i18n.detectAndApply(`${payload.title ?? ''} ${payload.explanation}`);
     const endLine = Math.max(
       payload.startLine,
       payload.endLine ?? payload.startLine
@@ -225,6 +254,8 @@ export class TourManager implements vscode.Disposable {
       return null;
     }
 
+    i18n.detectAndApply(trimmed);
+
     const activeStepId = this.comments.getActiveStepId();
     const stepIndex = activeStepId
       ? this.tour.steps.findIndex((s) => s.id === activeStepId)
@@ -252,7 +283,12 @@ export class TourManager implements vscode.Disposable {
     const stepQuestions = this.tour.questions.filter(
       (q) => q.stepId === step.id
     );
-    this.comments.refreshStepComments(step, stepQuestions);
+    this.comments.refreshStepComments(
+      step,
+      stepQuestions,
+      question.stepIndex,
+      this.tour.steps.length
+    );
     this.refreshUI();
 
     const delivered = this.eventDispatcher?.({
@@ -262,7 +298,7 @@ export class TourManager implements vscode.Disposable {
 
     if (delivered) {
       vscode.window.setStatusBarMessage(
-        '$(sync~spin) CodeWalk: Pregunta enviada a Antigravity...',
+        i18n.messages.questionSentStatus,
         5000
       );
       return question;
@@ -276,14 +312,14 @@ export class TourManager implements vscode.Disposable {
     if (copyPrompt) {
       await vscode.env.clipboard.writeText(prompt);
       vscode.window.showInformationMessage(
-        'CodeWalk: Pregunta guardada y prompt copiado al portapapeles. Pégalo en Antigravity para que responda aquí.'
+        i18n.messages.questionSavedAndCopied
       );
     } else {
       const action = await vscode.window.showInformationMessage(
-        'CodeWalk: Pregunta guardada para Antigravity.',
-        'Copiar prompt'
+        i18n.messages.questionSavedManual,
+        i18n.messages.copyPromptButton
       );
-      if (action === 'Copiar prompt') {
+      if (action === i18n.messages.copyPromptButton) {
         await vscode.env.clipboard.writeText(prompt);
       }
     }
@@ -305,6 +341,8 @@ export class TourManager implements vscode.Disposable {
       return;
     }
 
+    i18n.detectAndApply(trimmed);
+
     const event: TourRequestEvent = {
       type: 'tour_request',
       id: `req-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -319,7 +357,7 @@ export class TourManager implements vscode.Disposable {
     const delivered = this.eventDispatcher?.(event);
     if (delivered) {
       vscode.window.setStatusBarMessage(
-        '$(sync~spin) CodeWalk: Petición de tour enviada a Antigravity...',
+        i18n.messages.tourRequestSentStatus,
         6000
       );
       return;
@@ -327,20 +365,23 @@ export class TourManager implements vscode.Disposable {
 
     const locationPart = context?.file
       ? context.startLine
-        ? ` (contexto: ${context.file}:${context.startLine}-${context.endLine ?? context.startLine})`
-        : ` (contexto: ${context.file})`
+        ? ` (${context.file}:${context.startLine}-${context.endLine ?? context.startLine})`
+        : ` (${context.file})`
       : '';
-    const clipboardPrompt = `[codewalk] Crea un recorrido interactivo con codewalk_create_tour (incluyendo lineNotes): ${trimmed}${locationPart}`;
-    await vscode.env.clipboard.writeText(clipboardPrompt);
-    vscode.window.showInformationMessage(
-      'CodeWalk (modo manual): Prompt copiado al portapapeles. Pégalo en Antigravity (o activa el modo escucha).'
+    const clipboardPrompt = i18n.messages.manualTourRequestPrompt(
+      trimmed,
+      locationPart
     );
+    await vscode.env.clipboard.writeText(clipboardPrompt);
+    vscode.window.showInformationMessage(i18n.messages.tourRequestCopiedManual);
   }
 
   public async replyToStep(payload: ReplyPayload): Promise<StepQuestion | null> {
     if (!this.tour) {
       throw new Error('No active tour.');
     }
+
+    i18n.detectAndApply(payload.answer);
 
     let targetQuestion: StepQuestion | undefined;
     if (payload.questionId) {
@@ -378,7 +419,7 @@ export class TourManager implements vscode.Disposable {
         file: step.file,
         startLine: step.startLine,
         endLine: step.endLine,
-        question: '(Nota adicional)',
+        question: i18n.messages.additionalNoteQuestion,
         answer: payload.answer,
         createdAt: new Date().toISOString(),
         answeredAt: new Date().toISOString(),
@@ -393,7 +434,12 @@ export class TourManager implements vscode.Disposable {
       const stepQuestions = this.tour.questions.filter(
         (q) => q.stepId === step.id
       );
-      this.comments.refreshStepComments(step, stepQuestions);
+      this.comments.refreshStepComments(
+        step,
+        stepQuestions,
+        stepIndex,
+        this.tour.steps.length
+      );
       this.refreshUI();
     }
 
@@ -416,7 +462,10 @@ export class TourManager implements vscode.Disposable {
     if (pending.length === 1) {
       return this.buildQuestionPrompt(pending[0]);
     }
-    return `[codewalk] Tengo ${pending.length} preguntas pendientes en el recorrido "${this.tour?.title}". Usa codewalk_get_questions para leerlas y respóndelas con codewalk_reply.`;
+    return i18n.messages.manualPendingPrompt(
+      pending.length,
+      this.tour?.title ?? ''
+    );
   }
 
   private buildQuestionPrompt(q: StepQuestion): string {
@@ -424,7 +473,14 @@ export class TourManager implements vscode.Disposable {
       q.startLine === q.endLine
         ? `${q.startLine}`
         : `${q.startLine}-${q.endLine}`;
-    return `[codewalk] Pregunta en paso ${q.stepIndex + 1} ("${q.stepTitle}", ${path.basename(q.file)}:${lineRef}): "${q.question}" — Respóndela usando codewalk_reply (questionId: "${q.id}").`;
+    return i18n.messages.manualQuestionPrompt(
+      q.stepIndex + 1,
+      q.stepTitle,
+      path.basename(q.file),
+      lineRef,
+      q.question,
+      q.id
+    );
   }
 
   private normalizeStep(input: TourStepInput, index: number): TourStep {
@@ -513,7 +569,9 @@ export class TourManager implements vscode.Disposable {
       this.statusBarItem.text = `$(book) CodeWalk: ${
         this.tour.currentStepIndex + 1
       }/${this.tour.steps.length}${pendingSuffix}`;
-      this.statusBarItem.tooltip = `${this.tour.title} — Clic para ir al siguiente paso (Alt+→)`;
+      this.statusBarItem.tooltip = i18n.messages.tourStatusTooltip(
+        this.tour.title
+      );
       this.statusBarItem.show();
     } else {
       this.statusBarItem.hide();

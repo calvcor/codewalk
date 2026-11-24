@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { i18n } from './i18n';
 import { StepQuestion, TourStep } from './types';
 
 class CodeWalkComment implements vscode.Comment {
@@ -34,9 +35,13 @@ export class CommentViewManager implements vscode.Disposable {
       'codewalk',
       'CodeWalk'
     );
+    this.syncControllerOptions();
+  }
+
+  public syncControllerOptions(): void {
     this.controller.options = {
-      placeHolder: 'Escribe una pregunta sobre este bloque de código...',
-      prompt: 'Pregunta sobre este paso',
+      placeHolder: i18n.messages.commentPlaceHolder,
+      prompt: i18n.messages.commentPrompt,
     };
   }
 
@@ -62,7 +67,11 @@ export class CommentViewManager implements vscode.Disposable {
 
     const comments = this.buildComments(step, questions);
     const thread = this.controller.createCommentThread(uri, range, comments);
-    thread.label = `Paso ${stepIndex + 1}/${totalSteps} — ${step.title}`;
+    thread.label = i18n.messages.stepHeader(
+      stepIndex + 1,
+      totalSteps,
+      step.title
+    );
     thread.collapsibleState = vscode.CommentThreadCollapsibleState.Expanded;
     thread.canReply = true;
     thread.contextValue = 'codewalk-step';
@@ -88,7 +97,11 @@ export class CommentViewManager implements vscode.Disposable {
     );
 
     const thread = this.controller.createCommentThread(uri, range, [
-      new CodeWalkComment('CodeWalk', explanation, 'Nota rápida'),
+      new CodeWalkComment(
+        'CodeWalk',
+        explanation,
+        i18n.messages.quickNoteLabel
+      ),
     ]);
     thread.label = `CodeWalk — ${title}`;
     thread.collapsibleState = vscode.CommentThreadCollapsibleState.Expanded;
@@ -99,9 +112,22 @@ export class CommentViewManager implements vscode.Disposable {
     this.activeStepId = null;
   }
 
-  public refreshStepComments(step: TourStep, questions: StepQuestion[]): void {
+  public refreshStepComments(
+    step: TourStep,
+    questions: StepQuestion[],
+    stepIndex?: number,
+    totalSteps?: number
+  ): void {
     if (!this.activeThread || this.activeStepId !== step.id) {
       return;
+    }
+    this.syncControllerOptions();
+    if (typeof stepIndex === 'number' && typeof totalSteps === 'number') {
+      this.activeThread.label = i18n.messages.stepHeader(
+        stepIndex + 1,
+        totalSteps,
+        step.title
+      );
     }
     this.activeThread.comments = this.buildComments(step, questions);
     this.activeThread.collapsibleState =
@@ -120,12 +146,13 @@ export class CommentViewManager implements vscode.Disposable {
     step: TourStep,
     questions: StepQuestion[]
   ): vscode.Comment[] {
+    const m = i18n.messages;
     const comments: vscode.Comment[] = [];
 
     let mainBody = step.explanation.trim();
     const importantNotes = step.lineNotes.filter((n) => n.important || n.detail);
     if (importantNotes.length > 0) {
-      mainBody += '\n\n---\n**Líneas más importantes:**\n';
+      mainBody += `\n\n---\n**${m.keyLinesHeading}**\n`;
       for (const note of importantNotes) {
         if (note.detail) {
           mainBody += `\n- \`L${note.line}\` — **${note.text}**\n  ${note.detail}\n`;
@@ -135,14 +162,14 @@ export class CommentViewManager implements vscode.Disposable {
       }
     }
 
-    comments.push(new CodeWalkComment('CodeWalk', mainBody, 'Explicación'));
+    comments.push(new CodeWalkComment('CodeWalk', mainBody, m.explanationLabel));
 
     for (const q of questions) {
       comments.push(
         new CodeWalkComment(
-          'Tú',
+          m.youAuthor,
           q.question,
-          q.answer ? 'Respondida' : 'Pendiente',
+          q.answer ? m.answeredLabel : m.pendingLabel,
           new Date(q.createdAt)
         )
       );
@@ -151,7 +178,7 @@ export class CommentViewManager implements vscode.Disposable {
           new CodeWalkComment(
             'CodeWalk',
             q.answer,
-            'Respuesta',
+            m.answerLabel,
             q.answeredAt ? new Date(q.answeredAt) : undefined
           )
         );

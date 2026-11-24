@@ -27,8 +27,8 @@ async function bridgeRequest<T>(
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     throw new Error(
-      `No se pudo conectar con la extensión CodeWalk en VS Code (${BASE_URL}). ` +
-        `Asegúrate de tener VS Code abierto con la extensión codewalk activa. (${detail})`
+      `Could not connect to the CodeWalk VS Code extension (${BASE_URL}). ` +
+        `Make sure VS Code is open with the CodeWalk extension running. (${detail})`
     );
   }
 
