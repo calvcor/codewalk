@@ -1,0 +1,247 @@
+{
+  "name": "codewalk",
+  "displayName": "CodeWalk",
+  "description": "Interactive code walkthroughs in VS Code driven by AI agents over MCP.",
+  "version": "0.1.0",
+  "publisher": "calvcor",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/calvcor/codewalk.git"
+  },
+  "homepage": "https://github.com/calvcor/codewalk#readme",
+  "bugs": {
+    "url": "https://github.com/calvcor/codewalk/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Education",
+    "Visualization",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "bin": {
+    "codewalk-mcp": "./dist/mcpServer.js"
+  },
+  "contributes": {
+    "configuration": {
+      "title": "CodeWalk",
+      "properties": {
+        "codewalk.port": {
+          "type": "number",
+          "default": 47321,
+          "description": "Localhost port for the CodeWalk MCP bridge server."
+        },
+        "codewalk.dimInactiveCode": {
+          "type": "boolean",
+          "default": true,
+          "description": "Dim lines outside the currently explained code block (spotlight effect)."
+        },
+        "codewalk.showLineNotes": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show concise inline explanations at the end of key lines within the highlighted block."
+        },
+        "codewalk.copyQuestionPrompt": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically copy a ready-to-paste prompt to the clipboard when you ask a question inline."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codewalk",
+          "title": "CodeWalk",
+          "icon": "resources/codewalk.svg"
+        }
+      ]
+    },
+    "views": {
+      "codewalk": [
+        {
+          "id": "codewalk.tourView",
+          "name": "Code Tour"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "codewalk.nextStep",
+        "title": "Next Step",
+        "category": "CodeWalk",
+        "icon": "$(arrow-right)"
+      },
+      {
+        "command": "codewalk.prevStep",
+        "title": "Previous Step",
+        "category": "CodeWalk",
+        "icon": "$(arrow-left)"
+      },
+      {
+        "command": "codewalk.goToStep",
+        "title": "Go to Step",
+        "category": "CodeWalk"
+      },
+      {
+        "command": "codewalk.toggleDim",
+        "title": "Toggle Spotlight Dim",
+        "category": "CodeWalk",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "codewalk.toggleLineNotes",
+        "title": "Toggle Line-by-Line Notes",
+        "category": "CodeWalk",
+        "icon": "$(note)"
+      },
+      {
+        "command": "codewalk.clearTour",
+        "title": "Clear Tour",
+        "category": "CodeWalk",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "codewalk.askQuestion",
+        "title": "Ask Question",
+        "category": "CodeWalk"
+      },
+      {
+        "command": "codewalk.copyPendingQuestions",
+        "title": "Copy Pending Questions Prompt",
+        "category": "CodeWalk",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "codewalk.showBridgeStatus",
+        "title": "Show MCP Bridge Status",
+        "category": "CodeWalk"
+      },
+      {
+        "command": "codewalk.requestTour",
+        "title": "Request New Tour",
+        "category": "CodeWalk",
+        "icon": "$(add)"
+      },
+      {
+        "command": "codewalk.explainSelection",
+        "title": "Explain with CodeWalk",
+        "category": "CodeWalk",
+        "icon": "$(book)"
+      },
+      {
+        "command": "codewalk.stopListening",
+        "title": "Stop Listening",
+        "category": "CodeWalk",
+        "icon": "$(debug-stop)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "codewalk.requestTour",
+          "when": "view == codewalk.tourView",
+          "group": "navigation@0"
+        },
+        {
+          "command": "codewalk.prevStep",
+          "when": "view == codewalk.tourView && codewalk.hasTour",
+          "group": "navigation@1"
+        },
+        {
+          "command": "codewalk.nextStep",
+          "when": "view == codewalk.tourView && codewalk.hasTour",
+          "group": "navigation@2"
+        },
+        {
+          "command": "codewalk.toggleDim",
+          "when": "view == codewalk.tourView && codewalk.hasTour",
+          "group": "navigation@3"
+        },
+        {
+          "command": "codewalk.copyPendingQuestions",
+          "when": "view == codewalk.tourView && codewalk.hasTour",
+          "group": "navigation@4"
+        },
+        {
+          "command": "codewalk.clearTour",
+          "when": "view == codewalk.tourView && codewalk.hasTour",
+          "group": "navigation@5"
+        },
+        {
+          "command": "codewalk.stopListening",
+          "when": "view == codewalk.tourView && codewalk.isListening",
+          "group": "navigation@6"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "codewalk.explainSelection",
+          "group": "navigation@100"
+        }
+      ],
+      "comments/commentThread/title": [
+        {
+          "command": "codewalk.prevStep",
+          "when": "commentController == codewalk",
+          "group": "navigation@1"
+        },
+        {
+          "command": "codewalk.nextStep",
+          "when": "commentController == codewalk",
+          "group": "navigation@2"
+        },
+        {
+          "command": "codewalk.toggleDim",
+          "when": "commentController == codewalk",
+          "group": "navigation@3"
+        },
+        {
+          "command": "codewalk.toggleLineNotes",
+          "when": "commentController == codewalk",
+          "group": "navigation@4"
+        }
+      ],
+      "comments/commentThread/context": [
+        {
+          "command": "codewalk.askQuestion",
+          "when": "commentController == codewalk && commentThread == codewalk-step",
+          "group": "inline@1"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "codewalk.nextStep",
+        "key": "alt+right",
+        "when": "codewalk.hasTour"
+      },
+      {
+        "command": "codewalk.prevStep",
+        "key": "alt+left",
+        "when": "codewalk.hasTour"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "compile": "npm run build",
+    "vscode:prepublish": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.7.2"
+  }
+}
