@@ -9,6 +9,21 @@ import {
 
 const PORT = Number(process.env.CODEWALK_PORT ?? '47321');
 const BASE_URL = `http://127.0.0.1:${PORT}`;
+const EVENTS_URL = `${BASE_URL}/events/next`;
+const LISTEN_COMMAND = `curl -sS --max-time 0 ${EVENTS_URL}`;
+
+const SERVER_INSTRUCTIONS = `CodeWalk connects to a local VS Code extension bridge at ${BASE_URL}.
+
+## Active Listening Mode (Zero Idle Tokens)
+When the user asks you to keep listening / stay listening for CodeWalk questions or tour requests:
+- NEVER use timers, cron schedules, sleep loops, or periodic polling of \`codewalk_get_questions\` (every wakeup wastes tokens).
+- Instead, run this single long-polling command in the background (with no notification timeout) and end your turn so you consume 0 tokens while waiting:
+  \`${LISTEN_COMMAND}\`
+- The bridge holds the HTTP connection open with zero overhead until an event happens in VS Code, then returns a single JSON object and exits, automatically waking you:
+  - \`{"type":"question","question":{...}}\`: Reply inline with \`codewalk_reply\` (passing \`questionId\` and \`stepId\`), then start the background \`curl\` again to continue listening.
+  - \`{"type":"tour_request",...}\`: Build the walkthrough with \`codewalk_create_tour\`, then start the background \`curl\` again.
+  - \`{"type":"stop_listening",...}\`: The user clicked "Stop Listening" in VS Code — stop listening and do NOT restart \`curl\`.
+- If the user asks you in chat to stop listening, cancel the background \`curl\` task (or POST \`${BASE_URL}/events/stop\`).`;
 
 async function bridgeRequest<T>(
   method: string,
@@ -224,7 +239,7 @@ const TOOLS: Tool[] = [
   {
     name: 'codewalk_get_questions',
     description:
-      'Read questions the user submitted inline on tour steps in VS Code.',
+      `One-shot read of questions the user submitted inline on tour steps in VS Code. NEVER poll this tool on a timer or schedule to keep listening (that wastes tokens). For zero-token active listening, run \`${LISTEN_COMMAND}\` as a background shell command (no notification timeout) and end your turn until it completes with a JSON event.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -239,7 +254,7 @@ const TOOLS: Tool[] = [
   {
     name: 'codewalk_reply',
     description:
-      'Post an answer directly into the inline comment thread of a tour step in VS Code, resolving the user question.',
+      `Post an answer directly into the inline comment thread of a tour step in VS Code, resolving the user question. If the user asked you to stay listening afterwards, do NOT set a timer or poll \`codewalk_get_questions\` — instead run \`${LISTEN_COMMAND}\` in the background (no notification timeout) and end your turn.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -283,6 +298,7 @@ const server = new Server(
     capabilities: {
       tools: {},
     },
+    instructions: SERVER_INSTRUCTIONS,
   }
 );
 
@@ -301,7 +317,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           '/health'
         );
         return {
-          content: [{ type: 'text', text: JSON.stringify(health, null, 2) }],
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  ...health,
+                  eventsUrl: EVENTS_URL,
+                  listenCommand: LISTEN_COMMAND,
+                },
+                null,
+                2
+              ),
+            },
+          ],
         };
       }
 
